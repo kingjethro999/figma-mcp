@@ -246,12 +246,34 @@ app.get("/", (req, res) => {
              
              <div class="content">
                  <div class="section">
+                     <h2>🔑 API Configuration</h2>
+                     <div class="api-form">
+                         <div class="form-group">
+                             <label for="customApiKey">Your Figma API Token (Optional):</label>
+                             <input type="password" id="customApiKey" placeholder="figd_..." />
+                             <small style="color: #8b949e; font-size: 12px; margin-top: 4px; display: block;">
+                                 📖 <a href="https://www.figma.com/developers/api#access-tokens" target="_blank" style="color: #58a6ff;">How to get your Figma API token</a>
+                             </small>
+                         </div>
+                         <div class="form-group">
+                             <label for="customFileKey">File Key (Optional):</label>
+                             <input type="text" id="customFileKey" placeholder="ABC123DEF456" />
+                             <small style="color: #8b949e; font-size: 12px; margin-top: 4px; display: block;">
+                                 💡 <strong>How to find File Key:</strong> From your Figma URL: <code>figma.com/file/<span style="color: #58a6ff;">ABC123DEF456</span>/Your-File-Name</code>
+                             </small>
+                         </div>
+                         <button class="btn secondary" onclick="saveApiConfig()">💾 Save Configuration</button>
+                         <button class="btn secondary" onclick="clearApiConfig()">🗑️ Clear</button>
+                     </div>
+                 </div>
+ 
+                 <div class="section">
                      <h2>API Documentation</h2>
                      <div class="endpoint-info">
                          <p><strong>GET</strong> <code>/figma/{fileKey}</code></p>
                          <p><strong>Base URL:</strong> <code>${req.protocol}://${req.get('host')}</code></p>
                          <p><strong>Headers:</strong> Content-Type: application/json</p>
-                         <p><strong>Auth:</strong> Figma token configured server-side</p>
+                         <p><strong>Auth:</strong> <span id="authStatus">Figma token configured server-side</span></p>
                      </div>
                  </div>
  
@@ -268,7 +290,7 @@ app.get("/", (req, res) => {
  
                  <div class="section">
                      <h2>Request Logs</h2>
-                     <button class="btn secondary refresh-btn" onclick="refreshHistory()">REFRESH</button>
+                     
                      <div class="table-container">
                          <table id="historyTable">
                              <thead>
@@ -278,6 +300,7 @@ app.get("/", (req, res) => {
                                      <th>STATUS</th>
                                      <th>LATENCY</th>
                                      <th>CLIENT_IP</th>
+                                     <th><button class="btn secondary refresh-btn" onclick="refreshHistory()">REFRESH</button></th>
                                  </tr>
                              </thead>
                              <tbody id="historyBody">
@@ -292,33 +315,95 @@ app.get("/", (req, res) => {
          </div>
 
         <script>
-                         async function testAPI() {
-                 const fileKey = document.getElementById('fileKey').value.trim();
-                 if (!fileKey) {
-                     console.error('[ERROR] fileKey parameter required');
-                     return;
-                 }
- 
-                 console.log(\`[REQUEST] GET /figma/\${fileKey}\`);
-                 
-                 try {
-                     const response = await fetch(\`/figma/\${fileKey}\`);
-                     const data = await response.json();
-                     
-                     if (response.ok) {
-                         console.log(\`[SUCCESS] Status: \${response.status}\`);
-                         console.log('[RESPONSE]', data);
-                     } else {
-                         console.error(\`[ERROR] Status: \${response.status}\`);
-                         console.error('[ERROR_DETAILS]', data);
-                     }
-                 } catch (error) {
-                     console.error(\`[NETWORK_ERROR] \${error.message}\`);
-                 }
-                 
-                 // Refresh logs after API call
-                 setTimeout(refreshHistory, 500);
-             }
+            // Load saved configuration on page load
+            function loadApiConfig() {
+                const savedApiKey = localStorage.getItem('figma_api_key');
+                const savedFileKey = localStorage.getItem('figma_file_key');
+                
+                if (savedApiKey) {
+                    document.getElementById('customApiKey').value = savedApiKey;
+                    document.getElementById('authStatus').textContent = 'Using your custom API token';
+                    document.getElementById('authStatus').style.color = '#3fb950';
+                }
+                
+                if (savedFileKey) {
+                    document.getElementById('customFileKey').value = savedFileKey;
+                    document.getElementById('fileKey').value = savedFileKey;
+                }
+            }
+            
+            function saveApiConfig() {
+                const apiKey = document.getElementById('customApiKey').value.trim();
+                const fileKey = document.getElementById('customFileKey').value.trim();
+                
+                if (apiKey) {
+                    localStorage.setItem('figma_api_key', apiKey);
+                    document.getElementById('authStatus').textContent = 'Using your custom API token';
+                    document.getElementById('authStatus').style.color = '#3fb950';
+                    console.log('[CONFIG] ✅ Custom API key saved');
+                }
+                
+                if (fileKey) {
+                    localStorage.setItem('figma_file_key', fileKey);
+                    document.getElementById('fileKey').value = fileKey;
+                    console.log('[CONFIG] ✅ Custom file key saved and applied');
+                }
+                
+                if (!apiKey && !fileKey) {
+                    console.log('[CONFIG] ⚠️ No configuration provided');
+                    return;
+                }
+                
+                console.log('[CONFIG] 🎉 Configuration saved successfully!');
+            }
+            
+            function clearApiConfig() {
+                localStorage.removeItem('figma_api_key');
+                localStorage.removeItem('figma_file_key');
+                document.getElementById('customApiKey').value = '';
+                document.getElementById('customFileKey').value = '';
+                document.getElementById('fileKey').value = '';
+                document.getElementById('authStatus').textContent = 'Figma token configured server-side';
+                document.getElementById('authStatus').style.color = '#c9d1d9';
+                console.log('[CONFIG] 🗑️ Configuration cleared');
+            }
+
+            async function testAPI() {
+                const fileKey = document.getElementById('fileKey').value.trim();
+                if (!fileKey) {
+                    console.error('[ERROR] fileKey parameter required');
+                    return;
+                }
+
+                console.log(\`[REQUEST] GET /figma/\${fileKey}\`);
+                
+                // Check if user has custom API key
+                const customApiKey = localStorage.getItem('figma_api_key');
+                const headers = { 'Content-Type': 'application/json' };
+                
+                if (customApiKey) {
+                    headers['X-Custom-Figma-Token'] = customApiKey;
+                    console.log('[REQUEST] Using custom API token');
+                }
+                
+                try {
+                    const response = await fetch(\`/figma/\${fileKey}\`, { headers });
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        console.log(\`[SUCCESS] Status: \${response.status}\`);
+                        console.log('[RESPONSE]', data);
+                    } else {
+                        console.error(\`[ERROR] Status: \${response.status}\`);
+                        console.error('[ERROR_DETAILS]', data);
+                    }
+                } catch (error) {
+                    console.error(\`[NETWORK_ERROR] \${error.message}\`);
+                }
+                
+                // Refresh logs after API call
+                setTimeout(refreshHistory, 500);
+            }
 
              async function refreshHistory() {
                  try {
@@ -349,7 +434,8 @@ app.get("/", (req, res) => {
             // Auto-refresh history every 30 seconds
             setInterval(refreshHistory, 30000);
             
-            // Load history on page load
+            // Load configuration and history on page load
+            loadApiConfig();
             refreshHistory();
         </script>
     </body>
@@ -368,10 +454,30 @@ app.get("/figma/:fileKey", async (req, res) => {
   const startTime = Date.now();
   const clientIP = req.ip || req.connection.remoteAddress || 'unknown';
 
+  // Check for custom API token from client
+  const customToken = req.headers['x-custom-figma-token'];
+  const apiToken = customToken || FIGMA_TOKEN;
+
+  if (!apiToken) {
+    const responseTime = Date.now() - startTime;
+    requestHistory.push({
+      timestamp: new Date().toISOString(),
+      fileKey: fileKey,
+      status: 'error',
+      responseTime: responseTime,
+      ip: clientIP,
+      error: 'No API token available'
+    });
+    
+    return res.status(400).json({ 
+      error: "No Figma API token available. Please provide one in the configuration above." 
+    });
+  }
+
   try {
     const response = await axios.get(`https://api.figma.com/v1/files/${fileKey}`, {
       headers: {
-        "X-Figma-Token": FIGMA_TOKEN,
+        "X-Figma-Token": apiToken,
       },
     });
 
