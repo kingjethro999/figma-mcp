@@ -15,12 +15,18 @@
     "mcp": "npm run start:mcp",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["mcp", "figma", "model-context-protocol", "rest-api"],
+  "keywords": [
+    "mcp",
+    "figma",
+    "model-context-protocol",
+    "rest-api"
+  ],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "@supabase/supabase-js": "^2.50.2",
     "axios": "^1.10.0",
     "cors": "^2.8.5",
     "dotenv": "^17.0.0",
