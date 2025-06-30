@@ -27,6 +27,13 @@ Both servers provide the following Figma tools:
 - **get_figma_file_overview**: Get a concise overview of a Figma file
 - **🚀 generate_code_from_figma_node**: Generate ready-to-use React/Vue/HTML code from a Figma node
 
+### REST API Features
+- 🌐 **Web Interface**: User-friendly testing interface at `/`
+- 📊 **Request Monitoring**: Real-time request history and performance tracking
+- 🔒 **IP Privacy**: Each user only sees their own request history (🔒 padlock for others)
+- ⚙️ **Custom API Tokens**: Users can configure their own Figma tokens
+- 📈 **Analytics**: Response times, success rates, and error tracking
+
 ## Setup
 
 ### 1. Get Your Figma Token
@@ -40,14 +47,35 @@ Both servers provide the following Figma tools:
 Create a `.env` file in the project root:
 
 ```bash
+# Required: Figma API Token
 FIGMA_TOKEN=your_figma_token_here
+
+# Optional: Supabase for persistent request history
+SUPABASE_URL=your_supabase_project_url
+SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
+
+**Note:** If Supabase credentials are not provided, the server will use in-memory storage for request history.
 
 ### 3. Install Dependencies
 
 ```bash
 npm install
 ```
+
+### 4. Optional: Supabase Database Setup
+
+For persistent request history with IP privacy, you can optionally set up Supabase:
+
+1. Create a [Supabase](https://supabase.com) project
+2. Run the SQL schema from `supabase-schema.sql` in your Supabase SQL editor
+3. Get your project URL and anon key from Settings > API
+4. Add them to your `.env` file
+
+**Benefits of using Supabase:**
+- 🔒 **IP Privacy**: Users can only see their own request history
+- 📊 **Persistent Storage**: Request history survives server restarts
+- 🏗️ **Scalable**: Better performance for high-traffic deployments
 
 ## Cursor Configuration
 
@@ -152,6 +180,21 @@ npm run dev:mcp
 npm run build:mcp
 ```
 
+## 🔒 Privacy & Security
+
+### IP-Based Privacy
+The request history system implements IP-based privacy:
+- ✅ You can see **all details** of your own requests
+- 🔒 Other users' requests show as **"🔒 Private"** (padlock icon)
+- 📊 This keeps request logs useful while maintaining privacy
+
+### Supabase Schema
+The `supabase-schema.sql` file includes:
+- Row-level security policies
+- Automatic cleanup of old requests (keeps last 1000)
+- Efficient indexing for performance
+- IP address hashing for enhanced privacy
+
 ## Troubleshooting
 
 1. **"FIGMA_TOKEN environment variable is required"**: Make sure you've set your Figma token in the environment variables or `.env` file.
@@ -159,6 +202,10 @@ npm run build:mcp
 2. **"Figma API error: 403"**: Your Figma token might be invalid or expired. Generate a new one.
 
 3. **"Figma API error: 404"**: The file key might be incorrect or you don't have access to the file.
+
+4. **Supabase connection issues**: Check your `SUPABASE_URL` and `SUPABASE_ANON_KEY` in the `.env` file. The server will fallback to in-memory storage if Supabase fails.
+
+5. **Request history not showing**: If using Supabase, ensure the schema has been properly applied and RLS policies are configured.
 
 ## 🎨 Code Generation Features
 
