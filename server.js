@@ -4,6 +4,7 @@ const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
 const path = require("path");
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 app.use(cors());
@@ -12,17 +13,36 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// 🔐 Get Figma token from environment variable
+// 🔐 Get environment variables
 const FIGMA_TOKEN = process.env.FIGMA_TOKEN;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
-// Validate that the token exists
+// Validate that required environment variables exist
 if (!FIGMA_TOKEN) {
   console.error("❌ FIGMA_TOKEN environment variable is not set!");
   console.error("Please create a .env file with: FIGMA_TOKEN=your_token_here");
   process.exit(1);
 }
 
-// In-memory storage for request history (for simple deployment)
+// Initialize Supabase client (optional - falls back to in-memory if not configured)
+let supabase = null;
+let useDatabase = false;
+
+if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+  try {
+    supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    useDatabase = true;
+    console.log("✅ Supabase connected - using database for request history");
+  } catch (error) {
+    console.error("❌ Supabase connection failed:", error.message);
+    console.log("📦 Falling back to in-memory storage");
+  }
+} else {
+  console.log("📦 Using in-memory storage for request history");
+}
+
+// Fallback in-memory storage
 let requestHistory = [];
 
 // 🏠 Home page with embedded interface
@@ -305,7 +325,7 @@ app.get("/", (req, res) => {
                              </thead>
                              <tbody id="historyBody">
                                  <tr>
-                                     <td colspan="5" class="no-data">No requests logged</td>
+                                     <td colspan="6" class="no-data">No requests logged</td>
                                  </tr>
                              </tbody>
                          </table>
@@ -413,17 +433,18 @@ app.get("/", (req, res) => {
                      const tbody = document.getElementById('historyBody');
                      
                      if (history.length === 0) {
-                         tbody.innerHTML = '<tr><td colspan="5" class="no-data">No requests logged</td></tr>';
+                         tbody.innerHTML = '<tr><td colspan="6" class="no-data">No requests logged</td></tr>';
                          return;
                      }
                      
                      tbody.innerHTML = history.map(req => \`
-                         <tr>
+                         <tr \${req.private ? 'style="opacity: 0.6;"' : ''}>
                              <td class="timestamp">\${new Date(req.timestamp).toISOString()}</td>
                              <td class="file-key">\${req.fileKey}</td>
                              <td class="\${req.status === 'success' ? 'status-success' : 'status-error'}">\${req.status.toUpperCase()}</td>
                              <td class="response-time">\${req.responseTime}ms</td>
-                             <td class="ip-address">\${req.ip}</td>
+                             <td class="ip-address">\${req.ip === '🔒' ? '<span style="color: #8b949e;">🔒 Private</span>' : req.ip}</td>
+                             <td></td>
                          </tr>
                      \`).join('');
                  } catch (error) {
@@ -443,9 +464,50 @@ app.get("/", (req, res) => {
   `);
 });
 
-// 📊 API endpoint to get request history
-app.get("/api/history", (req, res) => {
-  res.json(requestHistory.slice(-50)); // Return last 50 requests
+// 📊 API endpoint to get request history (IP-filtered)
+app.get("/api/history", async (req, res) => {
+  const clientIP = req.ip || req.connection.remoteAddress || 'unknown';
+  
+  try {
+    if (useDatabase && supabase) {
+      // Get requests from database
+      const { data, error } = await supabase
+        .from('figma_requests')
+        .select('*')
+        .order('timestamp', { ascending: false })
+        .limit(50);
+
+      if (error) {
+        console.error('Supabase query error:', error);
+        // Fallback to in-memory
+        return res.json(requestHistory.slice(-50).map(req => 
+          req.ip === clientIP ? req : { ...req, ip: '🔒', private: true }
+        ));
+      }
+
+      // Filter and format requests for IP privacy
+      const formattedRequests = data.map(dbReq => ({
+        timestamp: dbReq.timestamp,
+        fileKey: dbReq.file_key,
+        status: dbReq.status,
+        responseTime: dbReq.response_time,
+        ip: dbReq.ip_address === clientIP ? dbReq.ip_address : '🔒',
+        private: dbReq.ip_address !== clientIP,
+        error: dbReq.ip_address === clientIP ? dbReq.error_message : undefined
+      }));
+
+      res.json(formattedRequests);
+    } else {
+      // Use in-memory storage with IP filtering
+      const filteredHistory = requestHistory.slice(-50).map(req => 
+        req.ip === clientIP ? req : { ...req, ip: '🔒', private: true }
+      );
+      res.json(filteredHistory);
+    }
+  } catch (error) {
+    console.error('Error fetching history:', error);
+    res.status(500).json({ error: 'Failed to fetch request history' });
+  }
 });
 
 // 🧠 API Endpoint to fetch Figma file with history tracking
@@ -460,13 +522,14 @@ app.get("/figma/:fileKey", async (req, res) => {
 
   if (!apiToken) {
     const responseTime = Date.now() - startTime;
-    requestHistory.push({
+    await logRequest({
       timestamp: new Date().toISOString(),
       fileKey: fileKey,
       status: 'error',
       responseTime: responseTime,
       ip: clientIP,
-      error: 'No API token available'
+      error: 'No API token available',
+      userAgent: req.get('User-Agent') || 'unknown'
     });
     
     return res.status(400).json({ 
@@ -484,42 +547,75 @@ app.get("/figma/:fileKey", async (req, res) => {
     const responseTime = Date.now() - startTime;
 
     // Log successful request
-    requestHistory.push({
+    await logRequest({
       timestamp: new Date().toISOString(),
       fileKey: fileKey,
       status: 'success',
       responseTime: responseTime,
-      ip: clientIP
+      ip: clientIP,
+      userAgent: req.get('User-Agent') || 'unknown'
     });
-
-    // Keep only last 100 requests to prevent memory issues
-    if (requestHistory.length > 100) {
-      requestHistory = requestHistory.slice(-100);
-    }
 
     res.status(200).json(response.data);
   } catch (error) {
     const responseTime = Date.now() - startTime;
 
     // Log failed request
-    requestHistory.push({
+    await logRequest({
       timestamp: new Date().toISOString(),
       fileKey: fileKey,
       status: 'error',
       responseTime: responseTime,
       ip: clientIP,
-      error: error.message
+      error: error.message,
+      userAgent: req.get('User-Agent') || 'unknown'
     });
-
-    // Keep only last 100 requests
-    if (requestHistory.length > 100) {
-      requestHistory = requestHistory.slice(-100);
-    }
 
     console.error("Error fetching from Figma:", error.message);
     res.status(500).json({ error: "Unable to fetch Figma file." });
   }
 });
+
+// 📝 Helper function to log requests
+async function logRequest(requestData) {
+  if (useDatabase && supabase) {
+    try {
+      const { error } = await supabase
+        .from('figma_requests')
+        .insert([{
+          timestamp: requestData.timestamp,
+          file_key: requestData.fileKey,
+          status: requestData.status,
+          response_time: requestData.responseTime,
+          ip_address: requestData.ip,
+          error_message: requestData.error || null,
+          user_agent: requestData.userAgent
+        }]);
+
+      if (error) {
+        console.error('Supabase insert error:', error);
+        // Fallback to in-memory
+        requestHistory.push(requestData);
+        if (requestHistory.length > 100) {
+          requestHistory = requestHistory.slice(-100);
+        }
+      }
+    } catch (error) {
+      console.error('Database logging failed:', error);
+      // Fallback to in-memory
+      requestHistory.push(requestData);
+      if (requestHistory.length > 100) {
+        requestHistory = requestHistory.slice(-100);
+      }
+    }
+  } else {
+    // Use in-memory storage
+    requestHistory.push(requestData);
+    if (requestHistory.length > 100) {
+      requestHistory = requestHistory.slice(-100);
+    }
+  }
+}
 
 // 🔥 Start server
 if (require.main === module) {
