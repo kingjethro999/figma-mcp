@@ -7,11 +7,11 @@
     "mcp-figma-server": "./dist/index.js"
   },
   "scripts": {
-    "start": "node init && node server.js",
-    "dev": "node init && node server.js",
-    "build:mcp": "node init && npx tsc",
-    "start:mcp": "node init && npm run build:mcp && node dist/index.js",
-    "dev:mcp": "node init && npx tsc --watch",
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build:mcp": "npx tsc",
+    "start:mcp": "npm run build:mcp && node dist/index.js",
+    "dev:mcp": "npx tsc --watch",
     "mcp": "npm run start:mcp",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
